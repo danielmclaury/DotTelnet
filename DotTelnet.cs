@@ -18,12 +18,6 @@ public class DotTelnet
 
   public static async Task Main(string[] args)
   {
-    if(args.Length != 2)
-    {
-      usage();
-      return;
-    }
-
     string server = args[0];
     int port;
 
@@ -33,49 +27,52 @@ public class DotTelnet
     }
     catch(Exception e)
     {
-      Console.WriteLine("Exception: " + e.ToString());
+      Console.WriteLine("Error: " + e.ToString());
       usage();
       return;
     }
 
-    TcpClient client = new TcpClient(server, port);
-    NetworkStream netStream = client.GetStream();
-    StreamReader netStreamReader = new StreamReader(netStream);
-    StreamWriter netStreamWriter = new StreamWriter(netStream);
-
-    List<Task<string>> readTasks = new List<Task<string>>() { null, null };
-
     const int CONSOLE_INDEX = 0;
     const int SERVER_INDEX = 1;
 
-    readTasks[CONSOLE_INDEX] = Console.In.ReadLineAsync();
-    readTasks[SERVER_INDEX] = netStreamReader.ReadLineAsync();
-
-    Console.WriteLine("Connected to " + server + ":" + port.ToString());
-
-    while(true)
+    using(TcpClient client = new TcpClient(server, port))
     {
-      Task<string> finishedTask = await Task.WhenAny(readTasks);
+      Console.WriteLine("Connected to " + server + ":" + port.ToString());
 
-      if(finishedTask == readTasks[CONSOLE_INDEX])
+      using(StreamReader netStreamReader = new StreamReader(client.GetStream()))
       {
-        netStreamWriter.WriteLine(finishedTask.Result);
-        netStreamWriter.Flush();
-        readTasks[CONSOLE_INDEX] = Console.In.ReadLineAsync();
-      }
-      else if(finishedTask == readTasks[SERVER_INDEX])
-      {
-        string result = finishedTask.Result;
-
-        if(result == null)
+        using(StreamWriter netStreamWriter = new StreamWriter(client.GetStream()))
         {
-          Console.WriteLine("Disconnected from server");
-          client.Close();
-          return;
-        }
+	  List<Task<string>> readTasks = new List<Task<string>>() { null, null };
+	  readTasks[CONSOLE_INDEX] = Console.In.ReadLineAsync();
+	  readTasks[SERVER_INDEX] = netStreamReader.ReadLineAsync();
 
-        Console.WriteLine(finishedTask.Result);
-        readTasks[SERVER_INDEX] = netStreamReader.ReadLineAsync();
+	  while(true)
+	  {
+	    Task<string> finishedTask = await Task.WhenAny(readTasks);
+
+	    if(finishedTask == readTasks[CONSOLE_INDEX])
+	    {
+	      netStreamWriter.WriteLine(finishedTask.Result);
+	      netStreamWriter.Flush();
+	      readTasks[CONSOLE_INDEX] = Console.In.ReadLineAsync();
+	    }
+	    else if(finishedTask == readTasks[SERVER_INDEX])
+	    {
+	      string result = finishedTask.Result;
+
+	      if(result == null)
+	      {
+		Console.WriteLine("Disconnected from server");
+		client.Close();
+		return;
+	      }
+
+	      Console.WriteLine(result);
+	      readTasks[SERVER_INDEX] = netStreamReader.ReadLineAsync();
+	    }
+	  }
+        }
       }
     }
   }
